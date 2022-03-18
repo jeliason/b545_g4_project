@@ -1,0 +1,23 @@
+---
+title: "IO"
+output: html_notebook
+---
+
+```{r}
+# for scRNA data
+source("../scripts/io.R")
+matrix_dir = "../data/scRNA/RESA/"
+mat <- load_scRNA(matrix_dir)
+
+mat
+```
+
+```{r}
+# for scATAC data
+source("../scripts/io.R")
+matrix_dir = "../data/scATAC/RESA/"
+mat <- load_scATAC(matrix_dir)
+
+mat
+```
+
