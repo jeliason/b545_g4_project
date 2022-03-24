@@ -1,0 +1,167 @@
+---
+title: "Clustering scATAC"
+output: html_notebook
+---
+
+```{r}
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(EnsDb.Hsapiens.v86)
+library(patchwork)
+set.seed(1234)
+library(tidyverse)
+DATA_PATH = "../data/scATAC/"
+```
+
+```{r}
+source("../scripts/io.R")
+counts_LNCaP <- load_scATAC(paste0(DATA_PATH,"LNCaP/"))
+# metadata <- read.csv(
+#   file = "../vignette_data/atac_v1_lncap_10k_singlecell.csv",
+#   header = TRUE,
+#   row.names = 1
+# )
+
+chrom_assay_LNCaP <- CreateChromatinAssay(
+  counts = counts_LNCaP,
+  sep = c("_", "_"),
+  genome = 'hg38',
+  fragments = paste0(DATA_PATH,"LNCaP/",'fragments.tsv.gz'), # needs to be tabix-indexed!
+  min.cells = 10,
+  min.features = 200
+)
+
+lncap <- CreateSeuratObject(
+  counts = chrom_assay_LNCaP,
+  assay = "peaks_"
+)
+
+granges(lncap)
+```
+
+```{r}
+# extract gene annotations from EnsDb
+annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+
+# change to UCSC style since the data was mapped to hg38
+seqlevelsStyle(annotations) <- 'UCSC'
+
+# add the gene information to the object
+Annotation(lncap) <- annotations
+# compute nucleosome signal score per cell
+lncap <- NucleosomeSignal(object = lncap)
+
+# compute TSS enrichment score per cell
+lncap <- TSSEnrichment(object = lncap, fast = TRUE)
+
+total_fragments <- CountFragments(paste0(DATA_PATH,"LNCaP/",'fragments.tsv.gz'))
+sum(is.na(total_fragments))
+cb = colnames(lncap) %>% as_tibble %>% rename(CB=value)
+total_fragments = inner_join(total_fragments,cb,by="CB")
+lncap$fragments <- total_fragments$frequency_count
+
+lncap <- FRiP(
+  object = lncap,
+  assay = 'peaks_',
+  total.fragments = 'fragments'
+)
+
+lncap$blacklist_fraction <- FractionCountsInRegion(
+  object = lncap, 
+  assay = 'peaks_',
+  regions = blacklist_hg38
+)
+# add blacklist ratio and fraction of reads in peaks
+# lncap$pct_reads_in_peaks <- lncap$peak_region_fragments / lncap$passed_filters * 100
+# lncap$blacklist_ratio <- lncap$blacklist_region_fragments / lncap$peak_region_fragments
+
+lncap$high.tss <- ifelse(lncap$TSS.enrichment > 2, 'High', 'Low')
+TSSPlot(lncap, group.by = 'high.tss') + NoLegend()
+
+VlnPlot(
+  object = lncap,
+  features = c(
+               'FRiP','TSS.enrichment', 'blacklist_fraction', 'nucleosome_signal'),
+  pt.size = 0.1,
+  ncol = 2
+)
+
+# still need pct_reads_in_peaks and peak_region_fragments
+
+```
+
+```{r}
+lncap <- RunTFIDF(lncap)
+lncap <- FindTopFeatures(lncap, min.cutoff = 'q0')
+lncap <- RunSVD(lncap)
+
+DepthCor(lncap)
+```
+
+```{r}
+DefaultAssay(lncap) <- "peaks_"
+lncap <- RunUMAP(object = lncap, reduction = 'lsi', dims = 2:30)
+lncap <- FindNeighbors(object = lncap, reduction = 'lsi', dims = 2:30)
+
+lncap <- FindClusters(object = lncap, verbose = FALSE, algorithm = 3)
+DimPlot(object = lncap, label = TRUE) + NoLegend()
+```
+
+```{r}
+gene.activities <- GeneActivity(lncap)
+# add the gene activity matrix to the Seurat object as a new assay and normalize it
+lncap[['RNA']] <- CreateAssayObject(counts = gene.activities)
+lncap <- NormalizeData(
+  object = lncap,
+  assay = 'RNA',
+  normalization.method = 'LogNormalize',
+  scale.factor = median(lncap$nCount_RNA)
+)
+
+saveRDS(lncap,paste0(DATA_PATH,"LNCaP/data.rds"))
+DefaultAssay(lncap) <- 'RNA'
+
+FeaturePlot(
+  object = lncap,
+  features = c('MYC','TP53','GATA2','HOXB13','FOXA1','JUND'),
+  pt.size = 0.1,
+  max.cutoff = 'q95',
+  ncol = 2
+)
+```
+
+```{r}
+# change back to working with peaks instead of gene activities
+DefaultAssay(lncap) <- 'peaks_'
+lncap$seurat_clusters
+da_peaks <- FindMarkers(
+  object = lncap,
+  ident.1 = "1",
+  # ident.2 = "2",
+  min.pct = 0.05,
+  test.use = 'LR',
+  # latent.vars = 'peak_region_fragments'
+)
+
+head(da_peaks)
+
+plot1 <- FeaturePlot(
+  object = lncap,
+  features = rownames(da_peaks)[1],
+  pt.size = 0.1
+)
+plot1
+```
+
+```{r}
+# set plotting order
+# levels(pbmc) <- c("CD4 Naive","CD4 Memory","CD8 Naive","CD8 Effector","DN T","NK CD56bright","NK CD56Dim","pre-B",'pro-B',"pDC","DC","CD14 Mono",'CD16 Mono')
+
+CoveragePlot(
+  object = lncap,
+  region = rownames(da_peaks)[4],
+  extend.upstream = 40000,
+  extend.downstream = 20000
+)
+```

@@ -2,7 +2,12 @@
 title: "IO"
 output: html_notebook
 ---
-
+Useful libraries:
+Signac
+ArchR
+Seurat
+scran/scater
+bluster
 ```{r}
 # for scRNA data
 source("../scripts/io.R")
@@ -13,11 +18,20 @@ mat
 ```
 
 ```{r}
+library(Seurat)
+data = Read10X("../data/scRNA/RESA/")
+```
+
+```{r}
 # for scATAC data
 source("../scripts/io.R")
 matrix_dir = "../data/scATAC/RESA/"
 mat <- load_scATAC(matrix_dir)
 
 mat
+```
+
+```{r}
+
 ```
 
