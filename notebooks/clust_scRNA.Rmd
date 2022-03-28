@@ -4,17 +4,102 @@ output: html_notebook
 ---
 
 ```{r}
+# Load packages, etc.
 library(Seurat)
 library(tidyverse)
-DATA_PATH = "../data/scRNA/"
-# load 10x v3 pbmc data
-# counts <- Read10X_h5("raw_data/10x_scrna/pbmc10k_v3/pbmc_10k_v3_filtered_feature_bc_matrix.h5")
+DATA_PATH = "~/Desktop/b545_g4_project/data/RNA/"
 source("../scripts/io.R")
+```
 
-counts_LNCaP <- load_scRNA(paste0(DATA_PATH,"LNCaP/"))
-rownames(counts_LNCaP)
 
-rna <- CreateSeuratObject(counts = counts_LNCaP, assay = 'RNA', min.cells = 5, min.features = 500)
+```{r}
+# Load data into one, merged Seurat object
+
+# Load DMSO data and filter out doublets ()
+counts_DMSO <- load_scRNA(paste0(DATA_PATH,"/DMSO/"))
+DMSO_RNA <- CreateSeuratObject(counts = counts_DMSO, assay = 'RNA', project = 'DMSO_1')
+DMSO_RNA$type = 'DMSO'
+
+# Load ResA data
+counts_ResA <- load_scRNA(paste0(DATA_PATH,"/ResA/"))
+ResA_RNA <- CreateSeuratObject(counts = counts_ResA, assay = 'RNA', project = "ResA_1'")
+ResA_RNA$type = 'ResA'
+
+# Combine datasets
+combined_RNA <- merge(x=DMSO_RNA, y=ResA_RNA, add.cell.ids=c('DMSO','ResA'))
+
+# Delete individual datasets
+rm(DMSO_RNA, ResA_RNA)
+gc()
+combined_RNA
+```
+
+
+```{r}
+# Calculate and visualize QC metrics
+combined_RNA[["percent.mt"]] <- PercentageFeatureSet(combined_RNA, pattern = "^MT-")
+VlnPlot(combined_RNA, features=c('nCount_RNA','nFeature_RNA',"percent.mt"), ncol=3, group.by='type')
+FeatureScatter(combined_RNA, "nCount_RNA", "nFeature_RNA", group.by = "orig.ident", pt.size = 0.5)
+```
+
+
+```{r}
+# Filter out cells with low # genes expressed (< 2000).
+# Also exclude genes expressed in less than 5 cells
+# Since there are no cells expressing mitochondrial genes, I didn't bother to filter those out
+selected_cells <- WhichCells(combined_RNA, expression = nFeature_RNA > 2000)
+selected_genes <- rownames(combined_RNA)[Matrix::rowSums(combined_RNA) > 4]
+
+data.filt <- subset(combined_RNA, features = selected_genes, cells = selected_cells)
+data.filt # We kept 18,442 genes and 6567 cells.
+
+# Re-visualize QC metrics with filtered data
+VlnPlot(data.filt, features=c('nCount_RNA','nFeature_RNA',"percent.mt"), ncol=3, group.by='type')
+```
+
+
+```{r}
+# Doublet prediction with DoubletFinder
+# remotes::install_github('chris-mcginnis-ucsf/DoubletFinder')
+library(DoubletFinder)
+
+# It requires that I run clustering before detecting doublets
+data.filt = FindVariableFeatures(data.filt, verbose = F)
+data.filt = ScaleData(data.filt, vars.to.regress = c("nFeature_RNA", 'nCount_RNA'),
+    verbose = F)
+data.filt = RunPCA(data.filt, verbose = F, npcs = 20)
+data.filt = RunUMAP(data.filt, dims = 1:10, verbose = F)
+
+nExp <- round(ncol(data.filt) * 0.06)  # expect ~6% doublets if  ~8k cells were loaded per sample
+data.filt <- doubletFinder_v3(data.filt, pN = 0.25, pK = 0.09, nExp = nExp, PCs = 1:10, sct=T)
+
+# Visualize read counts based on doublet prediction
+DF.name = colnames(data.filt@meta.data)[grepl("DF.classification", colnames(data.filt@meta.data))]
+VlnPlot(data.filt, features = "nFeature_RNA", group.by = DF.name, pt.size = 0.1)
+
+# Remove doublets
+data.filt = data.filt[, data.filt@meta.data[, DF.name] == "Singlet"]
+dim(data.filt)
+```
+
+
+```{r}
+# Replot QC metrics
+VlnPlot(data.filt, features=c('nCount_RNA','nFeature_RNA',"percent.mt"), ncol=3, group.by='type')
+```
+
+
+```{r}
+# Save data in notebooks folder
+saveRDS(data.filt, "~/Desktop/b545_g4_project/notebooks/seurat_RNA_qc.rds")
+
+# To load in data: data <- readRDS("notebooks/seurat_RNA_qc.rds")
+```
+
+
+```{r}
+# These are commands in the original .rmd file that I didn't use, so I left them here just in case.
+
 # scrublet <- read.table("raw_data/10x_scrna/pbmc10k_v3/matrix_doublets.tsv", sep = "\t", col.names = c('observed', 'simulated'))
 # rownames(scrublet) <- colnames(counts)
 # rna <- AddMetaData(rna, metadata = scrublet)
@@ -63,5 +148,8 @@ rna <- FindClusters(rna, resolution = 0.4, algorithm = 3)
 # ctypes[Cells(nk.cells)] <- nk.cells$bright
 # rna <- AddMetaData(rna, metadata = ctypes, col.name = 'celltype')
 saveRDS(rna, paste0(DATA_PATH,"LNCaP/rna.rds"))
+```
+```{r}
+
 ```
 
