@@ -120,6 +120,7 @@ lncap <- NormalizeData(
 )
 
 saveRDS(lncap,paste0(DATA_PATH,"LNCaP/data.rds"))
+lncap <- readRDS(paste0(DATA_PATH,"LNCaP/data.rds"))
 DefaultAssay(lncap) <- 'RNA'
 
 FeaturePlot(
