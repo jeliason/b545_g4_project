@@ -117,29 +117,31 @@ data.filt <- RunUMAP(data.filt, reduction='mnn', dims=1:30)
 DimPlot(data.filt, group.by='orig.ident')
 ```
 
+### Possibly useful commands for preprocessing/clustering.
 
+Use these if they are helpful. However, all code used by team members is above.
 ```{r}
 # These are commands in the original .rmd file that I didn't use, so I left them here just in case.
 
 # scrublet <- read.table("raw_data/10x_scrna/pbmc10k_v3/matrix_doublets.tsv", sep = "\t", col.names = c('observed', 'simulated'))
 # rownames(scrublet) <- colnames(counts)
 # rna <- AddMetaData(rna, metadata = scrublet)
-rna <- RenameCells(rna, add.cell.id = 'rna')
-mito.features <- grep(pattern = "^MT-", x = rownames(x = rna), value = TRUE)
-percent.mito <- Matrix::colSums(x = GetAssayData(object = rna, slot = 'counts')[mito.features, ]) / Matrix::colSums(x = GetAssayData(object = rna, slot = 'counts'))
-rna$percent.mito <- percent.mito
-
-# QC
-rna <- subset(x = rna, subset = nCount_RNA > 2000 & nCount_RNA < 20000 & percent.mito < 0.2)
-
-# preprocessing
-rna <- NormalizeData(rna)
-rna <- FindVariableFeatures(rna, nfeatures = 3000)
-rna <- ScaleData(rna)
-rna <- RunPCA(rna, npcs = 100)
-rna <- RunTSNE(rna, dims = 1:30)
-rna <- FindNeighbors(rna, dims = 1:30)
-rna <- FindClusters(rna, resolution = 0.4, algorithm = 3)
+# rna <- RenameCells(rna, add.cell.id = 'rna')
+# mito.features <- grep(pattern = "^MT-", x = rownames(x = rna), value = TRUE)
+# percent.mito <- Matrix::colSums(x = GetAssayData(object = rna, slot = 'counts')[mito.features, ]) / Matrix::colSums(x = GetAssayData(object = rna, slot = 'counts'))
+# rna$percent.mito <- percent.mito
+# 
+# # QC
+# rna <- subset(x = rna, subset = nCount_RNA > 2000 & nCount_RNA < 20000 & percent.mito < 0.2)
+# 
+# # preprocessing
+# rna <- NormalizeData(rna)
+# rna <- FindVariableFeatures(rna, nfeatures = 3000)
+# rna <- ScaleData(rna)
+# rna <- RunPCA(rna, npcs = 100)
+# rna <- RunTSNE(rna, dims = 1:30)
+# rna <- FindNeighbors(rna, dims = 1:30)
+# rna <- FindClusters(rna, resolution = 0.4, algorithm = 3)
 # rna <- RunUMAP(rna, graph = 'RNA_nn', metric = 'euclidean')
 
 # new.cluster.ids <- c(
@@ -168,9 +170,6 @@ rna <- FindClusters(rna, resolution = 0.4, algorithm = 3)
 # names(ctypes) <- names(rna$celltype)
 # ctypes[Cells(nk.cells)] <- nk.cells$bright
 # rna <- AddMetaData(rna, metadata = ctypes, col.name = 'celltype')
-saveRDS(rna, paste0(DATA_PATH,"LNCaP/rna.rds"))
-```
-```{r}
-
+# saveRDS(rna, paste0(DATA_PATH,"LNCaP/rna.rds"))
 ```
 
