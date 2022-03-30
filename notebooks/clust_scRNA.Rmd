@@ -7,8 +7,11 @@ output: html_notebook
 # Load packages, etc.
 library(Seurat)
 library(tidyverse)
+library(SeuratData)
+library(SeuratWrappers)
 DATA_PATH = "~/Desktop/b545_g4_project/data/RNA/"
 source("../scripts/io.R")
+sessionInfo()
 ```
 
 
@@ -84,16 +87,34 @@ dim(data.filt)
 
 
 ```{r}
-# Replot QC metrics
-VlnPlot(data.filt, features=c('nCount_RNA','nFeature_RNA',"percent.mt"), ncol=3, group.by='type')
+# Replot
 ```
 
 
 ```{r}
 # Save data in notebooks folder
 saveRDS(data.filt, "~/Desktop/b545_g4_project/notebooks/seurat_RNA_qc.rds")
+```
 
-# To load in data: data <- readRDS("notebooks/seurat_RNA_qc.rds")
+```{r}
+# To load in data: 
+data.filt <- readRDS("~/Desktop/b545_g4_project/notebooks/seurat_RNA_qc.rds")
+```
+
+
+```{r}
+# Data integration with fastMNN
+
+# First, normalize data and identify variable features
+data.filt <- NormalizeData(data.filt)
+data.filt <- FindVariableFeatures(data.filt)
+
+# Run fastMNN
+data.filt <- RunFastMNN(object.list=SplitObject(data.filt, split.by='orig.ident'))
+
+# UMAP to visualize
+data.filt <- RunUMAP(data.filt, reduction='mnn', dims=1:30)
+DimPlot(data.filt, group.by='orig.ident')
 ```
 
 
