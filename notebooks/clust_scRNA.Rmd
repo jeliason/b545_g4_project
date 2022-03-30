@@ -8,7 +8,7 @@ output: html_notebook
 library(Seurat)
 library(tidyverse)
 library(SeuratData)
-library(SeuratWrappers)
+library(patchwork)
 DATA_PATH = "~/Desktop/b545_g4_project/data/RNA/"
 source("../scripts/io.R")
 sessionInfo()
@@ -116,6 +116,44 @@ data.filt <- RunFastMNN(object.list=SplitObject(data.filt, split.by='orig.ident'
 data.filt <- RunUMAP(data.filt, reduction='mnn', dims=1:30)
 DimPlot(data.filt, group.by='orig.ident')
 ```
+
+```{r}
+# Data integration with Seurat
+
+# First, split the dataset into a list of 2 Seurat objects (DMSO and LNCaP)
+data.list <- SplitObject(data.filt, split.by='orig.ident')
+
+# Normalize and identify variable genes for each dataset separately
+data.list <- lapply(X=data.list, FUN=function(x){
+  x <- NormalizeData(x)
+  x <- FindVariableFeatures(x, selection.method='vst', nfeatures=2000)
+})
+
+# Select features that are variable across datasets for integration
+features <- SelectIntegrationFeatures(object.list=data.list)
+
+# Perform integration
+anchors <- FindIntegrationAnchors(object.list=data.list)
+
+# Create integrated dataset
+data.integrated <- IntegrateData(anchorset=anchors)
+
+# UMAP for Seurat integration
+DefaultAssay(data.integrated) <- "integrated"
+data.integrated <- ScaleData(data.integrated, verbose=FALSE)
+data.integrated <- RunPCA(data.integrated, npcs=30, verbose=FALSE)
+data.integrated <- RunUMAP(data.integrated, reduction='pca', dims=1:30)
+DimPlot(data.integrated, reduction='umap', group.by='type')
+```
+```{r}
+# Data integration with harmony
+library(harmony)
+data.filt <- NormalizeData(data.filt) %>% FindVariableFeatures() %>% ScaleData() %>% RunPCA(verbose=FALSE)
+data.filt <- RunHarmony(data.filt, group.by.vars='orig.ident')
+data.filt <- RunUMAP(data.filt, reduction='harmony', dims=1:30)
+DimPlot(data.filt, group.by='type')
+```
+
 
 ### Possibly useful commands for preprocessing/clustering.
 
