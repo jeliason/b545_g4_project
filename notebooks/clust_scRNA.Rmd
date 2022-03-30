@@ -101,6 +101,12 @@ saveRDS(data.filt, "~/Desktop/b545_g4_project/notebooks/seurat_RNA_qc.rds")
 data.filt <- readRDS("~/Desktop/b545_g4_project/notebooks/seurat_RNA_qc.rds")
 ```
 
+```{r}
+# Plot UMAP on unintegrated data
+data.filt <- RunPCA(data.filt, npcs=30, verbose=FALSE)
+data.filt <- RunUMAP(data.filt, reduction='pca', dims=1:30)
+DimPlot(data.filt, group.by='type') + labs(title='no integration')
+```
 
 ```{r}
 # Data integration with fastMNN
