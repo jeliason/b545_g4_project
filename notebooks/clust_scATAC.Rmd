@@ -268,7 +268,7 @@ resA.filt
 resA.filt$type = 'ResA'
 ```
 
-## Combined 
+## For merged 
 ```{r}
 combined_scATAC.filt <- merge(x=lncap.filt, y=resA.filt, add.cell.ids=c('DMSO','ResA'))
 
@@ -308,6 +308,14 @@ resA.filt <- RunSVD(resA.filt)
 DepthCor(resA.filt)
 ```
 
+## For merged 
+```{r}
+combined_scATAC.filt <- RunTFIDF(combined_scATAC.filt)
+combined_scATAC.filt <- FindTopFeatures(combined_scATAC.filt, min.cutoff = 'q50') #top 50%
+combined_scATAC.filt <- RunSVD(combined_scATAC.filt)
+
+DepthCor(combined_scATAC.filt) # nothing in the figure
+```
 
 # Save 
 ```{r}
@@ -316,6 +324,9 @@ saveRDS(lncap.filt,paste0(DATA_PATH,"LNCaP/seurat_scATAC_lncap_qc.rds"))
 
 saveRDS(resA,paste0(DATA_PATH,"RESA/seurat_scATAC_ResA_non_qc.rds"))
 saveRDS(resA.filt,paste0(DATA_PATH,"RESA/seurat_scATAC_ResA_qc.rds"))
+
+saveRDS(combined_scATAC,paste0(DATA_PATH,"seurat_scATAC_merged_non_qc.rds"))
+saveRDS(combined_scATAC.filt,paste0(DATA_PATH,"seurat_scATAC_merged_qc.rds"))
 ```
 
 
