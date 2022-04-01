@@ -1,7 +1,39 @@
 ---
-title: "Clustering scATAC"
+title: "Preprocessing and clustering in scATAC"
 output: html_notebook
 ---
+# Install packages 
+```{r}
+# install EnsDb.Hsapiens.v86
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("EnsDb.Hsapiens.v86")
+
+# install tidyverse
+install.packages("tidyverse")
+
+# install ? (Sorry I forgot it...)
+if (!requireNamespace("devtools", quietly = TRUE))
+    install.packages("devtools")
+
+# install Signac
+    # Install bioconductor
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install()
+
+    # To automatically install Bioconductor dependencies
+setRepositories(ind=1:2)
+
+install.packages("Signac")
+
+# Install biovizBase
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("biovizBase")
+```
 
 ```{r}
 library(Signac)
@@ -11,11 +43,17 @@ library(EnsDb.Hsapiens.v86)
 library(patchwork)
 set.seed(1234)
 library(tidyverse)
+
 DATA_PATH = "../data/scATAC/"
 ```
 
+# Create a Seurat object
 ```{r}
 source("../scripts/io.R")
+```
+
+## For LNCaP cell line
+```{r}
 counts_LNCaP <- load_scATAC(paste0(DATA_PATH,"LNCaP/"))
 # metadata <- read.csv(
 #   file = "../vignette_data/atac_v1_lncap_10k_singlecell.csv",
@@ -34,12 +72,50 @@ chrom_assay_LNCaP <- CreateChromatinAssay(
 
 lncap <- CreateSeuratObject(
   counts = chrom_assay_LNCaP,
-  assay = "peaks_"
+  assay = "peaks_LNCaP"
 )
+lncap$type = 'DMSO'
 
 granges(lncap)
+
+lncap
 ```
 
+## For RESA cell line
+```{r}
+counts_RESA <- load_scATAC(paste0(DATA_PATH,"RESA/"))
+# metadata <- read.csv(
+#   file = "../vignette_data/atac_v1_lncap_10k_singlecell.csv",
+#   header = TRUE,
+#   row.names = 1
+# )
+
+chrom_assay_RESA <- CreateChromatinAssay(
+  counts = counts_RESA,
+  sep = c("_", "_"),
+  genome = 'hg38',
+  fragments = paste0(DATA_PATH,"RESA/",'fragments.tsv.gz'), # needs to be tabix-indexed!
+  min.cells = 10,
+  min.features = 200
+)
+
+resA <- CreateSeuratObject(
+  counts = chrom_assay_RESA,
+  assay = "peaks_RESA"
+)
+resA$type = 'ResA'
+
+granges(resA)
+
+```
+```{r}
+resA
+```
+
+
+# Add gene annotations to allow downstream functions 
+
+## For LNCaP cell line
 ```{r}
 # extract gene annotations from EnsDb
 annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
@@ -49,6 +125,18 @@ seqlevelsStyle(annotations) <- 'UCSC'
 
 # add the gene information to the object
 Annotation(lncap) <- annotations
+```
+
+## For RESA cell line
+```{r}
+# add the gene information to the object
+Annotation(resA) <- annotations
+```
+
+# Computing QC Metrics
+
+## For LNCaP cell line
+```{r}
 # compute nucleosome signal score per cell
 lncap <- NucleosomeSignal(object = lncap)
 
@@ -63,18 +151,15 @@ lncap$fragments <- total_fragments$frequency_count
 
 lncap <- FRiP(
   object = lncap,
-  assay = 'peaks_',
+  assay = 'peaks_LNCaP',
   total.fragments = 'fragments'
 )
 
 lncap$blacklist_fraction <- FractionCountsInRegion(
   object = lncap, 
-  assay = 'peaks_',
+  assay = 'peaks_LNCaP',
   regions = blacklist_hg38
 )
-# add blacklist ratio and fraction of reads in peaks
-# lncap$pct_reads_in_peaks <- lncap$peak_region_fragments / lncap$passed_filters * 100
-# lncap$blacklist_ratio <- lncap$blacklist_region_fragments / lncap$peak_region_fragments
 
 lncap$high.tss <- ifelse(lncap$TSS.enrichment > 2, 'High', 'Low')
 TSSPlot(lncap, group.by = 'high.tss') + NoLegend()
@@ -82,87 +167,222 @@ TSSPlot(lncap, group.by = 'high.tss') + NoLegend()
 VlnPlot(
   object = lncap,
   features = c(
-               'FRiP','TSS.enrichment', 'blacklist_fraction', 'nucleosome_signal'),
+               'nucleosome_signal', 'TSS.enrichment', 'fragments', 'FRiP', 'blacklist_fraction'),
   pt.size = 0.1,
-  ncol = 2
+  ncol = 5
 )
 
-# still need pct_reads_in_peaks and peak_region_fragments
-
 ```
 
+## For RESA cell line
 ```{r}
-lncap <- RunTFIDF(lncap)
-lncap <- FindTopFeatures(lncap, min.cutoff = 'q0')
-lncap <- RunSVD(lncap)
+# compute nucleosome signal score per cell
+resA <- NucleosomeSignal(object = resA)
 
-DepthCor(lncap)
-```
+# compute TSS enrichment score per cell
+resA <- TSSEnrichment(object = resA, fast = TRUE)
 
-```{r}
-DefaultAssay(lncap) <- "peaks_"
-lncap <- RunUMAP(object = lncap, reduction = 'lsi', dims = 2:30)
-lncap <- FindNeighbors(object = lncap, reduction = 'lsi', dims = 2:30)
+total_fragments <- CountFragments(paste0(DATA_PATH,"RESA/",'fragments.tsv.gz'))
+sum(is.na(total_fragments))
+cb_resA = colnames(resA) %>% as_tibble %>% rename(CB=value)
+total_fragments_resA = inner_join(total_fragments,cb_resA,by="CB")
+resA$fragments <- total_fragments_resA$frequency_count
 
-lncap <- FindClusters(object = lncap, verbose = FALSE, algorithm = 3)
-DimPlot(object = lncap, label = TRUE) + NoLegend()
-```
-
-```{r}
-gene.activities <- GeneActivity(lncap)
-# add the gene activity matrix to the Seurat object as a new assay and normalize it
-lncap[['RNA']] <- CreateAssayObject(counts = gene.activities)
-lncap <- NormalizeData(
-  object = lncap,
-  assay = 'RNA',
-  normalization.method = 'LogNormalize',
-  scale.factor = median(lncap$nCount_RNA)
+resA <- FRiP(
+  object = resA,
+  assay = 'peaks_RESA',
+  total.fragments = 'fragments'
 )
 
-saveRDS(lncap,paste0(DATA_PATH,"LNCaP/data.rds"))
-lncap <- readRDS(paste0(DATA_PATH,"LNCaP/data.rds"))
-DefaultAssay(lncap) <- 'RNA'
+resA$blacklist_fraction <- FractionCountsInRegion(
+  object = resA, 
+  assay = 'peaks_RESA',
+  regions = blacklist_hg38
+)
 
-FeaturePlot(
-  object = lncap,
-  features = c('MYC','TP53','GATA2','HOXB13','FOXA1','JUND'),
+
+VlnPlot(
+  object = resA,
+  features = c(
+               'nucleosome_signal', 'TSS.enrichment', 'fragments', 'FRiP', 'blacklist_fraction'),
   pt.size = 0.1,
-  max.cutoff = 'q95',
-  ncol = 2
+  ncol = 5
 )
+
+```
+
+## Combine 2 datasets
+```{r}
+combined_scATAC <- merge(x=lncap, y=resA, add.cell.ids=c('DMSO','ResA'))
+
+combined_scATAC
 ```
 
 ```{r}
-# change back to working with peaks instead of gene activities
-DefaultAssay(lncap) <- 'peaks_'
-lncap$seurat_clusters
-da_peaks <- FindMarkers(
-  object = lncap,
-  ident.1 = "1",
-  # ident.2 = "2",
-  min.pct = 0.05,
-  test.use = 'LR',
-  # latent.vars = 'peak_region_fragments'
+VlnPlot(
+  object = combined_scATAC,
+  features = c(
+               'nucleosome_signal', 'TSS.enrichment', 'fragments', 'FRiP', 'blacklist_fraction'),
+  pt.size = 0.1,
+  ncol = 5,
+  group.by='type'
 )
 
-head(da_peaks)
+```
 
-plot1 <- FeaturePlot(
-  object = lncap,
-  features = rownames(da_peaks)[1],
-  pt.size = 0.1
+# Subset: remove cells that are outliers for these QC metrics.
+## For LNCaP cell line
+```{r}
+lncap.filt <- subset(
+  x = lncap,
+  subset = fragments > 2000 &
+          fragments < 20000 &
+    nucleosome_signal < 9 &
+    TSS.enrichment > 2 &
+              FRiP > 0.3 &
+    blacklist_fraction < 1 
 )
-plot1
+
+lncap.filt
+
+lncap.filt$type = 'DMSO'
+# strength of nucleosome-binding pattern: <9
+# transcription start site enrichment score as defined by ENCODE: >2
+# total number of fragments in peaks: >2000 and < 20000
+# fraction of fragments in peaks: >30
+# percentage of reads in ENCODE-blacklisted genomic regions: <1
+```
+
+## For RESA cell line
+```{r}
+resA.filt <- subset(
+  x = resA,
+  subset = fragments > 1000 &
+          fragments < 20000 &
+    nucleosome_signal < 8 &
+    TSS.enrichment > 2 &
+              FRiP > 0.4 &
+    blacklist_fraction < 1 
+)
+resA.filt
+resA.filt$type = 'ResA'
+```
+
+## Combined 
+```{r}
+combined_scATAC.filt <- merge(x=lncap.filt, y=resA.filt, add.cell.ids=c('DMSO','ResA'))
+
+combined_scATAC.filt
 ```
 
 ```{r}
-# set plotting order
-# levels(pbmc) <- c("CD4 Naive","CD4 Memory","CD8 Naive","CD8 Effector","DN T","NK CD56bright","NK CD56Dim","pre-B",'pro-B',"pDC","DC","CD14 Mono",'CD16 Mono')
-
-CoveragePlot(
-  object = lncap,
-  region = rownames(da_peaks)[4],
-  extend.upstream = 40000,
-  extend.downstream = 20000
+VlnPlot(
+  object = combined_scATAC.filt,
+  features = c(
+               'nucleosome_signal', 'TSS.enrichment', 'fragments', 'FRiP', 'blacklist_fraction'),
+  pt.size = 0.1,
+  ncol = 5,
+  group.by='type'
 )
+
 ```
+
+
+# Normalization and linear dimensional rediction
+
+## For LNCaP cell line
+```{r}
+lncap.filt <- RunTFIDF(lncap.filt)
+lncap.filt <- FindTopFeatures(lncap.filt, min.cutoff = 'q50') #top 50%
+lncap.filt <- RunSVD(lncap.filt)
+
+DepthCor(lncap.filt)
+```
+
+## For RESA cell line
+```{r}
+resA.filt <- RunTFIDF(resA.filt)
+resA.filt <- FindTopFeatures(resA.filt, min.cutoff = 'q50') #top 50%
+resA.filt <- RunSVD(resA.filt)
+
+DepthCor(resA.filt)
+```
+
+
+# Save 
+```{r}
+saveRDS(lncap,paste0(DATA_PATH,"LNCaP/seurat_scATAC_lncap_non_qc.rds"))
+saveRDS(lncap.filt,paste0(DATA_PATH,"LNCaP/seurat_scATAC_lncap_qc.rds"))
+
+saveRDS(resA,paste0(DATA_PATH,"RESA/seurat_scATAC_ResA_non_qc.rds"))
+saveRDS(resA.filt,paste0(DATA_PATH,"RESA/seurat_scATAC_ResA_qc.rds"))
+```
+
+
+<!-- ```{r} -->
+<!-- DefaultAssay(lncap) <- "peaks_" -->
+<!-- lncap <- RunUMAP(object = lncap, reduction = 'lsi', dims = 2:30) -->
+<!-- lncap <- FindNeighbors(object = lncap, reduction = 'lsi', dims = 2:30) -->
+
+<!-- lncap <- FindClusters(object = lncap, verbose = FALSE, algorithm = 3) -->
+<!-- DimPlot(object = lncap, label = TRUE) + NoLegend() -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- gene.activities <- GeneActivity(lncap) -->
+<!-- # add the gene activity matrix to the Seurat object as a new assay and normalize it -->
+<!-- lncap[['RNA']] <- CreateAssayObject(counts = gene.activities) -->
+<!-- lncap <- NormalizeData( -->
+<!--   object = lncap, -->
+<!--   assay = 'RNA', -->
+<!--   normalization.method = 'LogNormalize', -->
+<!--   scale.factor = median(lncap$nCount_RNA) -->
+<!-- ) -->
+
+<!-- saveRDS(lncap,paste0(DATA_PATH,"LNCaP/data.rds")) -->
+<!-- lncap <- readRDS(paste0(DATA_PATH,"LNCaP/data.rds")) -->
+<!-- DefaultAssay(lncap) <- 'RNA' -->
+
+<!-- FeaturePlot( -->
+<!--   object = lncap, -->
+<!--   features = c('MYC','TP53','GATA2','HOXB13','FOXA1','JUND'), -->
+<!--   pt.size = 0.1, -->
+<!--   max.cutoff = 'q95', -->
+<!--   ncol = 2 -->
+<!-- ) -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- # change back to working with peaks instead of gene activities -->
+<!-- DefaultAssay(lncap) <- 'peaks_' -->
+<!-- lncap$seurat_clusters -->
+<!-- da_peaks <- FindMarkers( -->
+<!--   object = lncap, -->
+<!--   ident.1 = "1", -->
+<!--   # ident.2 = "2", -->
+<!--   min.pct = 0.05, -->
+<!--   test.use = 'LR', -->
+<!--   # latent.vars = 'peak_region_fragments' -->
+<!-- ) -->
+
+<!-- head(da_peaks) -->
+
+<!-- plot1 <- FeaturePlot( -->
+<!--   object = lncap, -->
+<!--   features = rownames(da_peaks)[1], -->
+<!--   pt.size = 0.1 -->
+<!-- ) -->
+<!-- plot1 -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- # set plotting order -->
+<!-- # levels(pbmc) <- c("CD4 Naive","CD4 Memory","CD8 Naive","CD8 Effector","DN T","NK CD56bright","NK CD56Dim","pre-B",'pro-B',"pDC","DC","CD14 Mono",'CD16 Mono') -->
+
+<!-- CoveragePlot( -->
+<!--   object = lncap, -->
+<!--   region = rownames(da_peaks)[4], -->
+<!--   extend.upstream = 40000, -->
+<!--   extend.downstream = 20000 -->
+<!-- ) -->
+<!-- ``` -->
