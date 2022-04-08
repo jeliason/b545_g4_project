@@ -1,4 +1,6 @@
 data
+merge_scATAC.Rmd
+vignette_data
 *.nb.html
 ### R ###
 # History files
