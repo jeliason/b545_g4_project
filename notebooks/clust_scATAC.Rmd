@@ -310,6 +310,7 @@ ix.feats = which(colSums(GetAssayData(object = lncap.filt, slot = "counts") != 0
 lncap.filt <- lncap.filt[,ix.feats]
 
 lncap.filt$type = 'DMSO'
+lncap.filt <- RenameCells(object = lncap.filt, add.cell.id = "DMSO")
 # strength of nucleosome-binding pattern: <9
 # transcription start site enrichment score as defined by ENCODE: >2
 # total number of fragments in peaks: >2000 and < 20000
@@ -336,11 +337,13 @@ resA.filt <- resA.filt[,ix.feats]
 
 resA.filt
 resA.filt$type = 'ResA'
+resA.filt <- RenameCells(object = resA.filt, add.cell.id = "ResA")
 ```
 
 ## For merged 
 ```{r}
-combined_scATAC.filt <- merge(x=lncap.filt, y=resA.filt, add.cell.ids=c('DMSO','ResA'))
+# combined_scATAC.filt <- merge(x=lncap.filt, y=resA.filt, add.cell.ids=c('DMSO','ResA'))
+combined_scATAC.filt <- merge(x=lncap.filt, y=resA.filt)
 
 # remove features that have counts in fewer than 10 cells
 ix.cells = which(rowSums(GetAssayData(object = combined_scATAC.filt, slot = "counts") != 0) > 10)
@@ -365,8 +368,9 @@ VlnPlot(
 
 ## For LNCaP cell line
 ```{r}
+lncap.filt <- FindTopFeatures(lncap.filt, min.cutoff = 10)
 lncap.filt <- RunTFIDF(lncap.filt)
-lncap.filt <- FindTopFeatures(lncap.filt, min.cutoff = 'q50') #top 50%
+# lncap.filt <- FindTopFeatures(lncap.filt, min.cutoff = 'q50') #top 50%
 lncap.filt <- RunSVD(lncap.filt)
 
 DepthCor(lncap.filt)
@@ -374,8 +378,9 @@ DepthCor(lncap.filt)
 
 ## For RESA cell line
 ```{r}
+resA.filt <- FindTopFeatures(resA.filt, min.cutoff = 10)
 resA.filt <- RunTFIDF(resA.filt)
-resA.filt <- FindTopFeatures(resA.filt, min.cutoff = 'q50') #top 50%
+# resA.filt <- FindTopFeatures(resA.filt, min.cutoff = 'q50') #top 50%
 resA.filt <- RunSVD(resA.filt)
 
 DepthCor(resA.filt)
@@ -383,8 +388,9 @@ DepthCor(resA.filt)
 
 ## For merged 
 ```{r}
+combined_scATAC.filt <- FindTopFeatures(combined_scATAC.filt, min.cutoff = 10)
 combined_scATAC.filt <- RunTFIDF(combined_scATAC.filt)
-combined_scATAC.filt <- FindTopFeatures(combined_scATAC.filt, min.cutoff = 'q50') #top 50%
+# combined_scATAC.filt <- FindTopFeatures(combined_scATAC.filt, min.cutoff = 'q50') #top 50%
 combined_scATAC.filt <- RunSVD(combined_scATAC.filt)
 
 DepthCor(combined_scATAC.filt) # nothing in the figure
@@ -401,7 +407,6 @@ saveRDS(resA.filt,paste0(DATA_PATH,"RESA/seurat_scATAC_ResA_qc_combined_peaks.rd
 saveRDS(combined_scATAC,paste0(DATA_PATH,"seurat_scATAC_merged_non_qc_combined_peaks.rds"))
 saveRDS(combined_scATAC.filt,paste0(DATA_PATH,"seurat_scATAC_merged_qc_combined_peaks.rds"))
 ```
-
 
 <!-- ```{r} -->
 <!-- DefaultAssay(lncap) <- "peaks_" -->
