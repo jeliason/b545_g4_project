@@ -52,9 +52,68 @@ DATA_PATH = "../data/scATAC/"
 source("../scripts/io.R")
 ```
 
+# create combined peaks to enable better merging
+```{r}
+peaks.lncap <- read.table(
+  file = paste0(DATA_PATH,"LNCaP/peaks.bed.gz"),
+  col.names = c("chr", "start", "end")
+)
+peaks.resa <- read.table(
+  file = paste0(DATA_PATH,"RESA/peaks.bed.gz"),
+  col.names = c("chr", "start", "end")
+)
+
+gr.lncap = makeGRangesFromDataFrame(peaks.lncap)
+gr.resa = makeGRangesFromDataFrame(peaks.resa)
+
+combined.peaks <- GenomicRanges::reduce(x = c(gr.lncap,gr.resa))
+
+# Filter out bad peaks based on length
+peakwidths <- width(combined.peaks)
+combined.peaks <- combined.peaks[peakwidths  < 10000 & peakwidths > 20]
+combined.peaks
+```
+
+```{r}
+barcodes.lncap = read_tsv(paste0(DATA_PATH,"LNCaP/barcodes.tsv.gz"),col_names = F) %>%
+  pull(X1) %>%
+  as.vector
+
+barcodes.resa = read_tsv(paste0(DATA_PATH,"RESA/barcodes.tsv.gz"),col_names = F) %>%
+  pull(X1) %>%
+  as.vector
+
+# create fragment objects
+frags.lncap <- CreateFragmentObject(
+  path = paste0(DATA_PATH,"LNCaP/fragments.tsv.gz"),
+  cells = barcodes.lncap
+)
+
+frags.resa <- CreateFragmentObject(
+  path = paste0(DATA_PATH,"RESA/fragments.tsv.gz"),
+  cells = barcodes.resa
+)
+```
+
+```{r}
+counts_LNCaP <- FeatureMatrix(
+  fragments = frags.lncap,
+  features = combined.peaks,
+  cells = barcodes.lncap
+)
+saveRDS(counts_LNCaP,paste0(DATA_PATH,"LNCaP/counts_LNCaP.rds"))
+
+counts_RESA <- FeatureMatrix(
+  fragments = frags.resa,
+  features = combined.peaks,
+  cells = barcodes.resa
+)
+saveRDS(counts_RESA,paste0(DATA_PATH,"RESA/counts_RESA.rds"))
+```
+
 ## For LNCaP cell line
 ```{r}
-counts_LNCaP <- load_scATAC(paste0(DATA_PATH,"LNCaP/"))
+# counts_LNCaP <- load_scATAC(paste0(DATA_PATH,"LNCaP/"))
 # metadata <- read.csv(
 #   file = "../vignette_data/atac_v1_lncap_10k_singlecell.csv",
 #   header = TRUE,
@@ -63,16 +122,17 @@ counts_LNCaP <- load_scATAC(paste0(DATA_PATH,"LNCaP/"))
 
 chrom_assay_LNCaP <- CreateChromatinAssay(
   counts = counts_LNCaP,
-  sep = c("_", "_"),
+  # sep = c("_", "_"),
+  sep = c("-","-"),
   genome = 'hg38',
-  fragments = paste0(DATA_PATH,"LNCaP/",'fragments.tsv.gz'), # needs to be tabix-indexed!
-  min.cells = 10,
-  min.features = 200
+  fragments = paste0(DATA_PATH,"LNCaP/",'fragments.tsv.gz') # needs to be tabix-indexed!
+  # min.cells = 10
+  # min.features = 200
 )
 
 lncap <- CreateSeuratObject(
   counts = chrom_assay_LNCaP,
-  assay = "peaks_LNCaP"
+  assay = "peaks"
 )
 lncap$type = 'DMSO'
 
@@ -83,7 +143,7 @@ lncap
 
 ## For RESA cell line
 ```{r}
-counts_RESA <- load_scATAC(paste0(DATA_PATH,"RESA/"))
+# counts_RESA <- load_scATAC(paste0(DATA_PATH,"RESA/"))
 # metadata <- read.csv(
 #   file = "../vignette_data/atac_v1_lncap_10k_singlecell.csv",
 #   header = TRUE,
@@ -92,16 +152,17 @@ counts_RESA <- load_scATAC(paste0(DATA_PATH,"RESA/"))
 
 chrom_assay_RESA <- CreateChromatinAssay(
   counts = counts_RESA,
-  sep = c("_", "_"),
+  # sep = c("_", "_"),
+  sep = c("-","-"),
   genome = 'hg38',
-  fragments = paste0(DATA_PATH,"RESA/",'fragments.tsv.gz'), # needs to be tabix-indexed!
-  min.cells = 10,
-  min.features = 200
+  fragments = paste0(DATA_PATH,"RESA/",'fragments.tsv.gz') # needs to be tabix-indexed!
+  # min.cells = 10,
+  # min.features = 200
 )
 
 resA <- CreateSeuratObject(
   counts = chrom_assay_RESA,
-  assay = "peaks_RESA"
+  assay = "peaks"
 )
 resA$type = 'ResA'
 
@@ -151,18 +212,18 @@ lncap$fragments <- total_fragments$frequency_count
 
 lncap <- FRiP(
   object = lncap,
-  assay = 'peaks_LNCaP',
+  assay = 'peaks',
   total.fragments = 'fragments'
 )
 
 lncap$blacklist_fraction <- FractionCountsInRegion(
   object = lncap, 
-  assay = 'peaks_LNCaP',
+  assay = 'peaks',
   regions = blacklist_hg38
 )
 
 lncap$high.tss <- ifelse(lncap$TSS.enrichment > 2, 'High', 'Low')
-TSSPlot(lncap, group.by = 'high.tss') + NoLegend()
+# TSSPlot(lncap, group.by = 'high.tss') + NoLegend()
 
 VlnPlot(
   object = lncap,
@@ -190,13 +251,13 @@ resA$fragments <- total_fragments_resA$frequency_count
 
 resA <- FRiP(
   object = resA,
-  assay = 'peaks_RESA',
+  assay = 'peaks',
   total.fragments = 'fragments'
 )
 
 resA$blacklist_fraction <- FractionCountsInRegion(
   object = resA, 
-  assay = 'peaks_RESA',
+  assay = 'peaks',
   regions = blacklist_hg38
 )
 
@@ -243,7 +304,10 @@ lncap.filt <- subset(
     blacklist_fraction < 1 
 )
 
-lncap.filt
+# remove cells that have counts in fewer than 200 features
+ix.feats = which(colSums(GetAssayData(object = lncap.filt, slot = "counts") != 0) > 200)
+
+lncap.filt <- lncap.filt[,ix.feats]
 
 lncap.filt$type = 'DMSO'
 # strength of nucleosome-binding pattern: <9
@@ -264,6 +328,12 @@ resA.filt <- subset(
               FRiP > 0.4 &
     blacklist_fraction < 1 
 )
+
+# remove cells that have counts in fewer than 200 features
+ix.feats = which(colSums(GetAssayData(object = resA.filt, slot = "counts") != 0) > 200)
+
+resA.filt <- resA.filt[,ix.feats]
+
 resA.filt
 resA.filt$type = 'ResA'
 ```
@@ -272,7 +342,10 @@ resA.filt$type = 'ResA'
 ```{r}
 combined_scATAC.filt <- merge(x=lncap.filt, y=resA.filt, add.cell.ids=c('DMSO','ResA'))
 
-combined_scATAC.filt
+# remove features that have counts in fewer than 10 cells
+ix.cells = which(rowSums(GetAssayData(object = combined_scATAC.filt, slot = "counts") != 0) > 10)
+
+combined_scATAC.filt <- combined_scATAC.filt[ix.cells,]
 ```
 
 ```{r}
@@ -319,14 +392,14 @@ DepthCor(combined_scATAC.filt) # nothing in the figure
 
 # Save 
 ```{r}
-saveRDS(lncap,paste0(DATA_PATH,"LNCaP/seurat_scATAC_lncap_non_qc.rds"))
-saveRDS(lncap.filt,paste0(DATA_PATH,"LNCaP/seurat_scATAC_lncap_qc.rds"))
+saveRDS(lncap,paste0(DATA_PATH,"LNCaP/seurat_scATAC_lncap_non_qc_combined_peaks.rds"))
+saveRDS(lncap.filt,paste0(DATA_PATH,"LNCaP/seurat_scATAC_lncap_qc_combined_peaks.rds"))
 
-saveRDS(resA,paste0(DATA_PATH,"RESA/seurat_scATAC_ResA_non_qc.rds"))
-saveRDS(resA.filt,paste0(DATA_PATH,"RESA/seurat_scATAC_ResA_qc.rds"))
+saveRDS(resA,paste0(DATA_PATH,"RESA/seurat_scATAC_ResA_non_qc_combined_peaks.rds"))
+saveRDS(resA.filt,paste0(DATA_PATH,"RESA/seurat_scATAC_ResA_qc_combined_peaks.rds"))
 
-saveRDS(combined_scATAC,paste0(DATA_PATH,"seurat_scATAC_merged_non_qc.rds"))
-saveRDS(combined_scATAC.filt,paste0(DATA_PATH,"seurat_scATAC_merged_qc.rds"))
+saveRDS(combined_scATAC,paste0(DATA_PATH,"seurat_scATAC_merged_non_qc_combined_peaks.rds"))
+saveRDS(combined_scATAC.filt,paste0(DATA_PATH,"seurat_scATAC_merged_qc_combined_peaks.rds"))
 ```
 
 
