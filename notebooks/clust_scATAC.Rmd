@@ -368,7 +368,7 @@ VlnPlot(
 
 ## For LNCaP cell line
 ```{r}
-lncap.filt <- FindTopFeatures(lncap.filt, min.cutoff = 10)
+lncap.filt <- FindTopFeatures(lncap.filt, min.cutoff = 'q50')
 lncap.filt <- RunTFIDF(lncap.filt)
 # lncap.filt <- FindTopFeatures(lncap.filt, min.cutoff = 'q50') #top 50%
 lncap.filt <- RunSVD(lncap.filt)
@@ -378,7 +378,7 @@ DepthCor(lncap.filt)
 
 ## For RESA cell line
 ```{r}
-resA.filt <- FindTopFeatures(resA.filt, min.cutoff = 10)
+resA.filt <- FindTopFeatures(resA.filt, min.cutoff = 'q50')
 resA.filt <- RunTFIDF(resA.filt)
 # resA.filt <- FindTopFeatures(resA.filt, min.cutoff = 'q50') #top 50%
 resA.filt <- RunSVD(resA.filt)
@@ -388,12 +388,12 @@ DepthCor(resA.filt)
 
 ## For merged 
 ```{r}
-combined_scATAC.filt <- FindTopFeatures(combined_scATAC.filt, min.cutoff = 10)
+combined_scATAC.filt <- FindTopFeatures(combined_scATAC.filt, min.cutoff = 'q50')
 combined_scATAC.filt <- RunTFIDF(combined_scATAC.filt)
 # combined_scATAC.filt <- FindTopFeatures(combined_scATAC.filt, min.cutoff = 'q50') #top 50%
 combined_scATAC.filt <- RunSVD(combined_scATAC.filt)
 
-DepthCor(combined_scATAC.filt) # nothing in the figure
+DepthCor(combined_scATAC.filt) 
 ```
 
 # Save 
