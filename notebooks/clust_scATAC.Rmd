@@ -408,6 +408,30 @@ saveRDS(combined_scATAC,paste0(DATA_PATH,"seurat_scATAC_merged_non_qc_combined_p
 saveRDS(combined_scATAC.filt,paste0(DATA_PATH,"seurat_scATAC_merged_qc_combined_peaks.rds"))
 ```
 
+# unintegrated UMAP 
+```{r}
+# look at data without integration first
+# loading in data
+unintegrated <- seurat_scATAC_merged_qc_combined_peaks
+# unintegrated <- RunTFIDF(seurat_scATAC_merged_qc_combined_peaks)
+unintegrated <- FindTopFeatures(unintegrated, min.cutoff = 50)
+# unintegrated <- RunSVD(unintegrated, n = 30, reduction.name = 'lsi', reduction.key = 'LSI_')
+unintegrated <- RunUMAP(unintegrated, reduction = 'lsi', dims = 2:30)
+p1 <- DimPlot(unintegrated, group.by = "type", pt.size = 0.1) + ggplot2::ggtitle("unintegrated")
+p1
+```
+# Integration: https://satijalab.org/signac/articles/integrate_atac.html
+```{r}
+# splitting data into list for each sample
+data.split <- SplitObject(unintegrated, split.by = "type")
+
+# select variable features
+features <- SelectIntegrationFeatures(object.list = data.split)
+saveRDS(features, "features.rds")
+# find integration anchors
+integration.anchors <- FindIntegrationAnchors(object.list = data.split, anchor.features = features, reduction = "rlsi", dims = 2:30)
+```
+
 <!-- ```{r} -->
 <!-- DefaultAssay(lncap) <- "peaks_" -->
 <!-- lncap <- RunUMAP(object = lncap, reduction = 'lsi', dims = 2:30) -->
